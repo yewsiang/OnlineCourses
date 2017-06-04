@@ -4,6 +4,7 @@ from cs231n.layers import *
 from cs231n.layer_utils import *
 
 # Added by YS
+# Introduced batchnorm to the layers
 def affine_batchnorm_relu_forward(x, w, b, gamma, beta, bn_param):
   """
   Convenience layer that perorms an affine transform followed by Batch Normalization, then ReLU
@@ -24,6 +25,53 @@ def affine_batchnorm_relu_backward(dout, cache):
   dz, dgamma, dbeta = batchnorm_backward(dnorm_z, bn_cache)
   dx, dw, db = affine_backward(dz, fc_cache)
   return dx, dw, db, dgamma, dbeta
+
+
+# Introduced dropout to the layers
+def affine_batchnorm_relu_dropout_forward(x, w, b, gamma, beta, bn_param, dropout_param):
+  """
+  Convenience layer that perorms an affine transform followed by Batch Normalization, then ReLU, then Dropout
+  """
+  z, fc_cache = affine_forward(x, w, b)
+  norm_z, bn_cache = batchnorm_forward(z, gamma, beta, bn_param)
+  a, relu_cache = relu_forward(norm_z)
+  out, do_cache = dropout_forward(a, dropout_param)
+  cache = (fc_cache, bn_cache, relu_cache, do_cache)
+  return out, cache
+
+
+def affine_batchnorm_relu_dropout_backward(dout, cache):
+  """
+  Backward pass for the affine-batchnorm-relu-dropout convenience layer
+  """
+  fc_cache, bn_cache, relu_cache, do_cache = cache
+  da = dropout_backward(dout, do_cache)
+  dnorm_z = relu_backward(da, relu_cache)
+  dz, dgamma, dbeta = batchnorm_backward(dnorm_z, bn_cache)
+  dx, dw, db = affine_backward(dz, fc_cache)
+  return dx, dw, db, dgamma, dbeta
+
+
+def affine_relu_dropout_forward(x, w, b, dropout_param):
+  """
+  Convenience layer that perorms an affine transform followed by a ReLU, then Dropout
+  """
+  z, fc_cache = affine_forward(x, w, b)
+  a, relu_cache = relu_forward(z)
+  out, do_cache = dropout_forward(a, dropout_param)
+  cache = (fc_cache, relu_cache, do_cache)
+  return out, cache
+
+
+def affine_relu_dropout_backward(dout, cache):
+  """
+  Backward pass for the affine-relu-dropout convenience layer
+  """
+  fc_cache, relu_cache, do_cache = cache
+  da = dropout_backward(dout, do_cache)
+  dz = relu_backward(da, relu_cache)
+  dx, dw, db = affine_backward(dz, fc_cache)
+  return dx, dw, db
 
 
 class TwoLayerNet(object):
@@ -299,10 +347,18 @@ class FullyConnectedNet(object):
       elif self.use_batchnorm:
         gamma = self.params['gamma' + str(i + 1)]
         beta = self.params['beta' + str(i + 1)]
-        a, cache = affine_batchnorm_relu_forward(X_i, W, b, gamma, beta, self.bn_params[i])
+        
+        if self.use_dropout:
+          a, cache = affine_batchnorm_relu_dropout_forward(X_i, W, b, gamma, beta, self.bn_params[i], self.dropout_param)
+        else:
+          a, cache = affine_batchnorm_relu_forward(X_i, W, b, gamma, beta, self.bn_params[i])
 
       else:  
-        a, cache = affine_relu_forward(X_i, W, b)
+
+        if self.use_dropout:
+          a, cache = affine_relu_dropout_forward(X_i, W, b, self.dropout_param)
+        else:
+          a, cache = affine_relu_forward(X_i, W, b)
 
       activations[i + 1] = a
       caches[i + 1] = cache
@@ -357,7 +413,11 @@ class FullyConnectedNet(object):
       dout = backgrads['a' + str(i + 1)] # Backward gradient from the next layer
 
       if self.use_batchnorm:
-        da, dW, db, dgamma, dbeta = affine_batchnorm_relu_backward(dout, caches[i])
+        if self.use_dropout:
+          da, dW, db, dgamma, dbeta = affine_batchnorm_relu_dropout_backward(dout, caches[i])
+        else:
+          da, dW, db, dgamma, dbeta = affine_batchnorm_relu_backward(dout, caches[i])
+
         grads['W' + str(i)] = dW + self.reg * self.params['W' + str(i)]
         grads['b' + str(i)] = db
         grads['gamma' + str(i)] = dgamma
@@ -365,7 +425,10 @@ class FullyConnectedNet(object):
         backgrads['a' + str(i)] = da
 
       else:
-        da, dW, db = affine_relu_backward(dout, caches[i])
+        if self.use_dropout:
+          da, dW, db = affine_relu_dropout_backward(dout, caches[i])
+        else:
+          da, dW, db = affine_relu_backward(dout, caches[i])
         grads['W' + str(i)] = dW + self.reg * self.params['W' + str(i)]
         grads['b' + str(i)] = db
         backgrads['a' + str(i)] = da
