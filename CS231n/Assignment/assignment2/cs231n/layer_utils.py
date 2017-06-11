@@ -30,9 +30,6 @@ def affine_relu_backward(dout, cache):
   return dx, dw, db
 
 
-pass
-
-
 def conv_relu_forward(x, w, b, conv_param):
   """
   A convenience layer that performs a convolution followed by a ReLU.
@@ -90,4 +87,34 @@ def conv_relu_pool_backward(dout, cache):
   da = relu_backward(ds, relu_cache)
   dx, dw, db = conv_backward_fast(da, conv_cache)
   return dx, dw, db
+
+# Added by YS
+def conv_batchnorm_relu_forward(x, w, b, gamma, beta, conv_param, bn_param):
+  """
+  A convenience layer that performs a convolution followed by a ReLU.
+
+  Inputs:
+  - x: Input to the convolutional layer
+  - w, b, conv_param: Weights and parameters for the convolutional layer
+  
+  Returns a tuple of:
+  - out: Output from the ReLU
+  - cache: Object to give to the backward pass
+  """
+  a, conv_cache = conv_forward_fast(x, w, b, conv_param)
+  a_norm, norm_cache = spatial_batchnorm_forward(a, gamma, beta, bn_param)
+  out, relu_cache = relu_forward(a_norm)
+  cache = (conv_cache, norm_cache, relu_cache)
+  return out, cache
+
+
+def conv_batchnorm_relu_backward(dout, cache):
+  """
+  Backward pass for the conv-relu convenience layer.
+  """
+  conv_cache, norm_cache, relu_cache = cache
+  da_norm = relu_backward(dout, relu_cache)
+  da, dgamma, dbeta = spatial_batchnorm_backward(da_norm, norm_cache)
+  dx, dw, db = conv_backward_fast(da, conv_cache)
+  return dx, dw, db, dgamma, dbeta
 
