@@ -135,7 +135,38 @@ class CaptioningRNN(object):
     # defined above to store loss and gradients; grads[k] should give the      #
     # gradients for self.params[k].                                            #
     ############################################################################
-    pass
+
+    # -------------------------- LOSS --------------------------
+    # (1) Image features (N, D) --x(D, H)--> Initial Hidden state (N, H)
+    h0 = np.dot(features, W_proj) + b_proj
+
+    # (2) Captions_in in index form (N, T) --> Captions_in in vector form (N, T, W)
+    x, cache_wembed = word_embedding_forward(captions_in, W_embed)
+
+    # (3) x, seq of input words (N, T, W) --> seq of hidden states (N, T, H)
+    h, cache_rnnfwd = rnn_forward(x, h0, Wx, Wh, b)
+
+    # (4) Compute scores (N, T, H) --> (N, T, V)
+    affine, cache_affine = temporal_affine_forward(h, W_vocab, b_vocab)
+
+    # (5) Compute loss (N, T, V) --> Loss
+    loss, dout = temporal_softmax_loss(affine, captions_out, mask)
+
+    # ------------------------ GRADIENTS -----------------------
+    dh, dW_vocab, db_vocab = temporal_affine_backward(dout, cache_affine)
+
+    dx, dh0, dWx, dWh, db = rnn_backward(dh, cache_rnnfwd)
+
+    dW_embed = word_embedding_backward(dx, cache_wembed)
+
+    dW_proj = np.dot(features.T, dh0)
+    db_proj = np.sum(dh0, axis=0)
+
+    grads['W_vocab'], grads['b_vocab'] = dW_vocab, db_vocab
+    grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
+    grads['W_embed'] = dW_embed
+    grads['W_proj'], grads['b_proj'] = dW_proj, db_proj
+    
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -197,7 +228,29 @@ class CaptioningRNN(object):
     # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
     # a loop.                                                                 #
     ###########################################################################
-    pass
+
+    prev_h = np.dot(features, W_proj) + b_proj
+    caption_in = np.full((N, 1), self._start)
+
+    for i in range(max_length):
+      x, cache_wembed = word_embedding_forward(caption_in, W_embed)
+      x = x.reshape(N, -1)
+      h, cache_rnnfwd = rnn_step_forward(x, prev_h, Wx, Wh, b)
+      h = h.reshape(N, 1, -1)
+      affine, cache_affine = temporal_affine_forward(h, W_vocab, b_vocab)
+
+      N, T, V = affine.shape
+      # Reshape from (N, 1, V) to (N, V)
+      affine = affine.reshape(N, -1)
+      # Choose the highest scored word. (N, V) to (N,)
+      highest_scored_idx = np.argmax(affine, axis=1)
+      # Add highest_scored_idx (N,) into captions (N, max_length)
+      captions[:, i] = highest_scored_idx
+
+      # Prepare for next iteration
+      prev_h = h.reshape(N, -1)
+      caption_in = highest_scored_idx.reshape(N, 1)
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
