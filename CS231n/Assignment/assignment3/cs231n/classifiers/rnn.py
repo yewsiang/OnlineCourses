@@ -136,36 +136,65 @@ class CaptioningRNN(object):
     # gradients for self.params[k].                                            #
     ############################################################################
 
-    # -------------------------- LOSS --------------------------
     # (1) Image features (N, D) --x(D, H)--> Initial Hidden state (N, H)
     h0 = np.dot(features, W_proj) + b_proj
 
     # (2) Captions_in in index form (N, T) --> Captions_in in vector form (N, T, W)
     x, cache_wembed = word_embedding_forward(captions_in, W_embed)
 
-    # (3) x, seq of input words (N, T, W) --> seq of hidden states (N, T, H)
-    h, cache_rnnfwd = rnn_forward(x, h0, Wx, Wh, b)
+    if self.cell_type == "rnn":
+      # -------------------------- LOSS --------------------------
+      # (3) x, seq of input words (N, T, W) --> seq of hidden states (N, T, H)
+      h, cache_rnnfwd = rnn_forward(x, h0, Wx, Wh, b)
 
-    # (4) Compute scores (N, T, H) --> (N, T, V)
-    affine, cache_affine = temporal_affine_forward(h, W_vocab, b_vocab)
+      # (4) Compute scores (N, T, H) --> (N, T, V)
+      affine, cache_affine = temporal_affine_forward(h, W_vocab, b_vocab)
 
-    # (5) Compute loss (N, T, V) --> Loss
-    loss, dout = temporal_softmax_loss(affine, captions_out, mask)
+      # (5) Compute loss (N, T, V) --> Loss
+      loss, dout = temporal_softmax_loss(affine, captions_out, mask)
 
-    # ------------------------ GRADIENTS -----------------------
-    dh, dW_vocab, db_vocab = temporal_affine_backward(dout, cache_affine)
+      # ------------------------ GRADIENTS -----------------------
+      dh, dW_vocab, db_vocab = temporal_affine_backward(dout, cache_affine)
 
-    dx, dh0, dWx, dWh, db = rnn_backward(dh, cache_rnnfwd)
+      dx, dh0, dWx, dWh, db = rnn_backward(dh, cache_rnnfwd)
 
-    dW_embed = word_embedding_backward(dx, cache_wembed)
+      dW_embed = word_embedding_backward(dx, cache_wembed)
 
-    dW_proj = np.dot(features.T, dh0)
-    db_proj = np.sum(dh0, axis=0)
+      dW_proj = np.dot(features.T, dh0)
+      db_proj = np.sum(dh0, axis=0)
 
-    grads['W_vocab'], grads['b_vocab'] = dW_vocab, db_vocab
-    grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
-    grads['W_embed'] = dW_embed
-    grads['W_proj'], grads['b_proj'] = dW_proj, db_proj
+      grads['W_vocab'], grads['b_vocab'] = dW_vocab, db_vocab
+      grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
+      grads['W_embed'] = dW_embed
+      grads['W_proj'], grads['b_proj'] = dW_proj, db_proj
+
+
+    elif self.cell_type == "lstm":
+      # -------------------------- LOSS --------------------------
+      # (3)  x (N, T, W) --> h (N, T, H)
+      h, cache_lstmfwd = lstm_forward(x, h0, Wx, Wh, b)
+
+      # (4) Compute scores (N, T, H) --> (N, T, V)
+      affine, cache_affine = temporal_affine_forward(h, W_vocab, b_vocab)
+
+      # (5) Compute loss (N, T, V) --> Loss
+      loss, dout = temporal_softmax_loss(affine, captions_out, mask)
+
+      # ------------------------ GRADIENTS -----------------------
+      dh, dW_vocab, db_vocab = temporal_affine_backward(dout, cache_affine)
+
+      dx, dh0, dWx, dWh, db = lstm_backward(dh, cache_lstmfwd)
+
+      dW_embed = word_embedding_backward(dx, cache_wembed)
+
+      dW_proj = np.dot(features.T, dh0)
+      db_proj = np.sum(dh0, axis=0)
+
+      grads['W_vocab'], grads['b_vocab'] = dW_vocab, db_vocab
+      grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
+      grads['W_embed'] = dW_embed
+      grads['W_proj'], grads['b_proj'] = dW_proj, db_proj
+
     
     ############################################################################
     #                             END OF YOUR CODE                             #
@@ -229,14 +258,21 @@ class CaptioningRNN(object):
     # a loop.                                                                 #
     ###########################################################################
 
+    prev_c = 0
     prev_h = np.dot(features, W_proj) + b_proj
     caption_in = np.full((N, 1), self._start)
 
     for i in range(max_length):
       x, cache_wembed = word_embedding_forward(caption_in, W_embed)
       x = x.reshape(N, -1)
-      h, cache_rnnfwd = rnn_step_forward(x, prev_h, Wx, Wh, b)
+
+      h = None
+      if self.cell_type == "rnn":
+        h, cache_rnnfwd = rnn_step_forward(x, prev_h, Wx, Wh, b)
+      elif self.cell_type == "lstm":
+        h, prev_c, cache_lstmfwd = lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b)
       h = h.reshape(N, 1, -1)
+
       affine, cache_affine = temporal_affine_forward(h, W_vocab, b_vocab)
 
       N, T, V = affine.shape
