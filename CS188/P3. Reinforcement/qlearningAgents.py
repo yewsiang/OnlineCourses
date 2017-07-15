@@ -115,6 +115,7 @@ class QLearningAgent(ReinforcementAgent):
         if len(legalActions) == 0:
             return None
 
+        # Epsilon greedy exploration
         take_random_action = util.flipCoin(self.epsilon)
         if take_random_action:
             return random.choice(legalActions)
