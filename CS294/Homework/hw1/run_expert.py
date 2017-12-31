@@ -9,6 +9,7 @@ Example usage:
 Author of this script and included expert policies: Jonathan Ho (hoj@openai.com)
 """
 
+import os
 import gym
 import time
 import pickle
@@ -17,6 +18,7 @@ import tensorflow as tf
 
 import tf_util
 import load_policy
+from run_bc import get_placeholders, get_model, get_loss
 
 slim = tf.contrib.slim
 
@@ -25,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('expert_policy_file', type=str)
     parser.add_argument('envname', type=str)
+    parser.add_argument('--save_dest_dir', type=str, default='bc_ckpt')
     parser.add_argument('--pause', type=float, default=0.05)
     parser.add_argument('--render', action='store_true')
     parser.add_argument("--max_timesteps", type=int)
@@ -33,6 +36,8 @@ def main():
     parser.add_argument('--learning_rate', type=float, default=0.001,
                         help='Learning rate of model')
     args = parser.parse_args()
+
+    if not os.path.exists(args.save_dest_dir): os.mkdir(args.save_dest_dir)
 
     print('loading and building expert policy')
     policy_fn = load_policy.load_policy(args.expert_policy_file)
@@ -86,16 +91,20 @@ def main():
 
         with tf.Graph().as_default():
 
-            is_training = True
-            batch = tf.Variable(0)
+            is_training = tf.placeholder(tf.bool, shape=())
             learning_rate = tf.Variable(args.learning_rate)
 
+            # Initialize
             obs, actions = get_placeholders(BATCH_SIZE, input_dims, output_dims)
-            pred = predict_action(obs, output_dims, is_training)
+            pred = get_model(obs, output_dims, is_training)
             loss = get_loss(actions, pred)
 
+            # Optimizer
             opt = tf.train.AdamOptimizer(learning_rate)
-            train_op = opt.minimize(loss, global_step=batch)
+            train_op = slim.learning.create_train_op(loss, opt)
+
+            # Save checkpoints
+            saver = tf.train.Saver()
 
             with tf.Session() as sess:
 
@@ -113,42 +122,14 @@ def main():
                     X = expert_data['observations'][sample,:]
                     y = expert_data['actions'][sample,:,:].reshape(BATCH_SIZE,-1)
 
-                    feed_dict = { obs: X, actions: y }
+                    feed_dict = { obs: X, actions: y, is_training: True }
                     l, _ = sess.run([loss, train_op], feed_dict=feed_dict)
                     loss_sum += l
 
-                    if step % 500 == 0:
-                        print(loss_sum / 500)
+                    if step % 1000 == 0:
+                        print("[Step %dK] Loss: %.4f" % (step / 1000, loss_sum / 1000))
+                        saver.save(sess, os.path.join(args.save_dest_dir, args.envname))
                         loss_sum = 0
-
-
-# =============================== SECTION 2 ===============================
-
-def get_placeholders(batch_size, input_dims, output_dims):
-    observations = tf.placeholder(tf.float32, shape=(batch_size, input_dims))
-    actions = tf.placeholder(tf.float32, shape=(batch_size, output_dims))
-    return observations, actions
-
-def predict_action(obs, output_dims, is_training):
-    """
-    Function that takes in an observation, and returns the action to take.
-    """
-    with tf.variable_scope('Behavioural_Cloning'):
-        net = slim.fully_connected(obs, 512, scope='fc1')
-        net = slim.dropout(net, keep_prob=0.7, scope='dp1', is_training=is_training)
-        net = slim.fully_connected(net, 256, scope='fc2')
-        net = slim.dropout(net, keep_prob=0.7, scope='dp2', is_training=is_training)
-        net = slim.fully_connected(net, 128, scope='fc3')
-        net = slim.fully_connected(net, output_dims, scope='fc4')
-    return net
-
-def get_loss(label, pred):
-    """
-    Calculates loss by difference between supposed action and prediction.
-    """
-    cross_entropy_loss = tf.losses.mean_squared_error(label, pred)
-    return cross_entropy_loss
-
 
 if __name__ == '__main__':
     main()
