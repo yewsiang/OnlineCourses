@@ -39,12 +39,14 @@ def gradcheck_naive(f, x):
         ### YOUR CODE HERE:
         orig  = x[ix]
         x[ix] = orig + h
+        random.setstate(rndstate)
         f_big = f(x)[0]
         x[ix] = orig - h
+        random.setstate(rndstate)
         f_small = f(x)[0]
         x[ix] = orig
         numgrad = (f_big - f_small) / (2 * h)
-        if not isinstance(numgrad, float):
+        if isinstance(numgrad, np.ndarray):
             numgrad = numgrad[ix]
         ### END YOUR CODE
 
@@ -55,8 +57,8 @@ def gradcheck_naive(f, x):
             print "First gradient error found at index %s" % str(ix)
             print "Your gradient: %f \t Numerical gradient: %f" % (
                 grad[ix], numgrad)
-            pdb.set_trace()
-            # return
+            
+            return
 
         it.iternext() # Step to next dimension
 
