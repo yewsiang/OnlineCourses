@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import pdb
 import argparse
 import numpy as np
 import matplotlib
@@ -49,7 +50,10 @@ def getSentenceFeatures(tokens, wordVectors, sentence):
     sentVector = np.zeros((wordVectors.shape[1],))
 
     ### YOUR CODE HERE
-    raise NotImplementedError
+    wordVectorsIdx = [tokens[word] for word in sentence]
+    wordVectorsForSentence = [wordVectors[idx] for idx in wordVectorsIdx]
+    wordVectorsForSentence = np.array(wordVectorsForSentence)
+    sentVector = np.mean(wordVectorsForSentence, axis=0)
     ### END YOUR CODE
 
     assert sentVector.shape == (wordVectors.shape[1],)
@@ -63,7 +67,7 @@ def getRegularizationValues():
     """
     values = None   # Assign a list of floats in the block below
     ### YOUR CODE HERE
-    raise NotImplementedError
+    values = [1e-2, 5e-2, 1e-1, 5e-1, 1e0, 5e0, 1e1, 5e1, 1e2, 5e2]
     ### END YOUR CODE
     return sorted(values)
 
@@ -89,7 +93,11 @@ def chooseBestModel(results):
     bestResult = None
 
     ### YOUR CODE HERE
-    raise NotImplementedError
+    bestDevAcc = -1
+    for result in results:
+        if result["dev"] > bestDevAcc:
+            bestDevAcc = result["dev"]
+            bestResult = result
     ### END YOUR CODE
 
     return bestResult
