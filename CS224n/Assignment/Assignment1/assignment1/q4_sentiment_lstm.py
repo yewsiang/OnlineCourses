@@ -135,8 +135,38 @@ def outputPredictions(dataset, labels, pred, filename):
             print >> f, "%d\t%d\t%s" % (
                 labels[i], pred[i], " ".join(dataset[i][0]))
 
+def RNN(x, numHidden):
+    # Define a lstm cell with tensorflow
+    lstmCell = rnn.BasicLSTMCell(numHidden, forget_bias=1.0)
+
+    # Get lstm cell output
+    outputs, states = rnn.static_rnn(lstmCell, x, dtype=tf.float32)
+
+    return outputs
+
+def BiRNN(x, numHidden):
+
+    # Prepare data shape to match `rnn` function requirements
+    # Current data input shape: (batch_size, timesteps, n_input)
+    # Required shape: 'timesteps' tensors list of shape (batch_size, num_input)
+
+    # Define lstm cells with tensorflow
+    # Forward direction cell
+    lstm_fw_cell = rnn.BasicLSTMCell(numHidden, forget_bias=1.0)
+    # Backward direction cell
+    lstm_bw_cell = rnn.BasicLSTMCell(numHidden, forget_bias=1.0)
+
+    # Get lstm cell output
+    try:
+        outputs, _, _ = rnn.static_bidirectional_rnn(lstm_fw_cell, lstm_bw_cell, x,
+                                              dtype=tf.float32)
+    except Exception: # Old TensorFlow version only returns outputs not states
+        outputs = rnn.static_bidirectional_rnn(lstm_fw_cell, lstm_bw_cell, x,
+                                        dtype=tf.float32)
+    return outputs
+
 class SentenceLSTMModel(object):
-    def __init__(self, numHidden, timeSteps, dimVectors, numClasses):
+    def __init__(self, numHidden, timeSteps, dimVectors, numClasses, rnnType="BiLSTM"):
         
         # Define weights
         self.weights = {
@@ -157,11 +187,13 @@ class SentenceLSTMModel(object):
         # Unstack to get a list of 'timesteps' tensors of shape (batch_size, n_input)
         x = tf.unstack(self.X_ph, timeSteps, 1)
 
-        # Define a lstm cell with tensorflow
-        lstmCell = rnn.BasicLSTMCell(numHidden, forget_bias=1.0)
-
-        # Get lstm cell output
-        outputs, states = rnn.static_rnn(lstmCell, x, dtype=tf.float32)
+        # Recurrent network through the word vectors of a sentence
+        if rnnType == "LSTM":
+            outputs = RNN(x, numHidden)
+        elif rnnType == "BiLSTM":
+            outputs = BiRNN(x, numHidden / 2)
+        else:
+            raise NotImplementedError("No such RNN type")
 
         # Linear activation, using rnn inner loop last output
         self.logits = tf.matmul(outputs[-1], self.weights['out']) + self.biases['out']
@@ -282,7 +314,7 @@ def main(args):
 
     # Network Parameters
     timeSteps = nSentenceLen # time steps
-    numHidden = 128 # hidden layer num of features
+    numHidden = 256 # hidden layer num of features
     numClasses = 5 # SST total classes (5 sentiments)
 
     # We will save our results from each run
