@@ -1,3 +1,4 @@
+
 class PartialParse(object):
     def __init__(self, sentence):
         """Initializes this partial parse.
@@ -21,6 +22,9 @@ class PartialParse(object):
         self.sentence = sentence
 
         ### YOUR CODE HERE
+        self.stack = ["ROOT"]
+        self.buffer = list(sentence)
+        self.dependencies = []
         ### END YOUR CODE
 
     def parse_step(self, transition):
@@ -32,6 +36,19 @@ class PartialParse(object):
                         transition.
         """
         ### YOUR CODE HERE
+        if transition == "S":
+            first_item = self.buffer.pop(0)
+            self.stack.append(first_item)
+        elif transition == "LA":
+            head = self.stack[-1]          # last item
+            dependent = self.stack.pop(-2) # 2nd last item
+            self.dependencies.append((head, dependent))
+        elif transition == "RA":
+            head = self.stack[-2]          # 2nd last item
+            dependent = self.stack.pop(-1) # last item
+            self.dependencies.append((head, dependent))
+        else:
+            raise NotImplementedError("No such transition")
         ### END YOUR CODE
 
     def parse(self, transitions):
@@ -66,6 +83,24 @@ def minibatch_parse(sentences, model, batch_size):
     """
 
     ### YOUR CODE HERE
+    partial_parses = [PartialParse(sentence) for sentence in sentences]
+    unfin_parses = list(partial_parses)
+    while len(unfin_parses) > 0:
+        # Get a minibatch of partial parses and perform prediction
+        batch_parses = unfin_parses[:batch_size]
+        transitions = model.predict(batch_parses)
+        for transition, batch_parse in zip(transitions, batch_parses):
+            batch_parse.parse_step(transition)
+
+        # Check if the partial parse have been completed
+        ids_to_remove = [idx if (len(pp.stack) == 1 and len(pp.buffer) == 0) else None \
+                         for idx, pp in enumerate(unfin_parses)]
+        # Remove elements in reverse direction to prevent wrong removal
+        for idx in ids_to_remove[::-1]:
+            if idx is not None: 
+                unfin_parses.pop(idx)
+
+    dependencies = [partial_parse.dependencies for partial_parse in partial_parses]
     ### END YOUR CODE
 
     return dependencies

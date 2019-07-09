@@ -6,6 +6,7 @@ import tensorflow as tf
 from model import Model
 from q2_initialization import xavier_weight_init
 from utils.parser_utils import minibatches, load_and_preprocess_data
+import pdb
 
 
 class Config(object):
@@ -24,6 +25,7 @@ class Config(object):
     batch_size = 1024
     n_epochs = 10
     lr = 0.0005
+    reg_strength = 1e-5
 
 
 class ParserModel(Model):
@@ -54,6 +56,9 @@ class ParserModel(Model):
         (Don't change the variable names)
         """
         ### YOUR CODE HERE
+        self.input_placeholder = tf.placeholder(tf.int32, [None, self.config.n_features])
+        self.labels_placeholder = tf.placeholder(tf.float32, [None, self.config.n_classes])
+        self.dropout_placeholder = tf.placeholder(tf.float32, [])
         ### END YOUR CODE
 
     def create_feed_dict(self, inputs_batch, labels_batch=None, dropout=0):
@@ -79,6 +84,14 @@ class ParserModel(Model):
             feed_dict: The feed dictionary mapping from placeholders to values.
         """
         ### YOUR CODE HERE
+        feed_dict = {
+            self.input_placeholder : inputs_batch,
+            self.dropout_placeholder : dropout
+        }
+        if not labels_batch is None:
+            feed_dict.update({
+                self.labels_placeholder : labels_batch
+            })
         ### END YOUR CODE
         return feed_dict
 
@@ -100,6 +113,10 @@ class ParserModel(Model):
             embeddings: tf.Tensor of shape (None, n_features*embed_size)
         """
         ### YOUR CODE HERE
+        cfg = self.config
+        pretrained_emb = tf.Variable(self.pretrained_embeddings)
+        input_emb = tf.nn.embedding_lookup(pretrained_emb, self.input_placeholder)
+        embeddings = tf.reshape(input_emb, [-1, cfg.n_features * cfg.embed_size])
         ### END YOUR CODE
         return embeddings
 
@@ -126,6 +143,26 @@ class ParserModel(Model):
 
         x = self.add_embedding()
         ### YOUR CODE HERE
+        cfg = self.config
+        emb_size = cfg.n_features * cfg.embed_size
+
+        # Initialize variables
+        xavier_initializer = xavier_weight_init()
+        W = tf.Variable(xavier_initializer((emb_size, cfg.hidden_size)))
+        b1 = tf.Variable(tf.zeros(cfg.hidden_size))
+        U = tf.Variable(xavier_initializer((cfg.hidden_size, cfg.n_classes)))
+        b2 = tf.Variable(tf.zeros(cfg.n_classes))
+        self.weights = {
+            'W' : W,
+            'b1': b1,
+            'U' : U,
+            'b2': b2
+        }
+
+        # Computation
+        h = tf.maximum(0., tf.matmul(x, W) + tf.expand_dims(b1, axis=0)) # (?, hidden_size)
+        h_drop = tf.nn.dropout(h, rate=self.dropout_placeholder)
+        pred = tf.matmul(h_drop, U) + tf.expand_dims(b2, axis=0) # (?, n_classes)
         ### END YOUR CODE
         return pred
 
@@ -143,6 +180,13 @@ class ParserModel(Model):
             loss: A 0-d tensor (scalar)
         """
         ### YOUR CODE HERE
+        cfg = self.config
+        loss = tf.nn.softmax_cross_entropy_with_logits(labels=self.labels_placeholder,
+                                                       logits=pred)
+        loss = tf.reduce_mean(loss)
+
+        regularizer = tf.reduce_sum([tf.nn.l2_loss(w) for _, w in self.weights.items()])
+        loss += regularizer * cfg.reg_strength
         ### END YOUR CODE
         return loss
 
@@ -167,6 +211,8 @@ class ParserModel(Model):
             train_op: The Op for training.
         """
         ### YOUR CODE HERE
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config.lr)
+        train_op = optimizer.minimize(loss)
         ### END YOUR CODE
         return train_op
 
@@ -181,7 +227,7 @@ class ParserModel(Model):
         prog = tf.keras.utils.Progbar(target=n_minibatches)
         for i, (train_x, train_y) in enumerate(minibatches(train_examples, self.config.batch_size)):
             loss = self.train_on_batch(sess, train_x, train_y)
-            prog.update(i + 1, [("train loss", loss)], force=i + 1 == n_minibatches)
+            prog.update(i + 1, [("train loss", loss)])
 
         print "Evaluating on dev set",
         dev_UAS, _ = parser.parse(dev_set)
@@ -206,7 +252,7 @@ class ParserModel(Model):
         self.build()
 
 
-def main(debug=True):
+def main(debug=False):
     print 80 * "="
     print "INITIALIZING"
     print 80 * "="
