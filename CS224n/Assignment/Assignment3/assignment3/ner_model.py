@@ -106,11 +106,13 @@ class NERModel(Model):
 			# The general idea is to loop over minibatches from train_examples, and run train_on_batch inside the loop
 			# Hint: train_examples could be a list containing the feature data and label data
 			# Read the doc for utils.get_minibatches to find out how to use it.
-                        # Note that get_minibatches could either return a list, or a list of list
-                        # [features, labels]. This makes expanding tuples into arguments (* operator) handy
+            # Note that get_minibatches could either return a list, or a list of list
+            # [features, labels]. This makes expanding tuples into arguments (* operator) handy
 
             ### YOUR CODE HERE (2-3 lines)
-
+            mbs = minibatches(train_examples, self.config.batch_size)
+            for minibatch in mbs:
+                self.train_on_batch(sess, *minibatch)
             ### END YOUR CODE
 
             logger.info("Evaluating on development data")
