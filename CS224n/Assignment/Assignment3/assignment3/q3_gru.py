@@ -7,6 +7,7 @@ Q3: Grooving with GRUs
 from __future__ import absolute_import
 from __future__ import division
 
+import pdb
 import argparse
 import logging
 import sys
@@ -17,6 +18,7 @@ import tensorflow as tf
 import numpy as np
 
 import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from util import Progbar, minibatches
@@ -25,7 +27,6 @@ from model import Model
 from q3_gru_cell import GRUCell
 from q2_rnn_cell import RNNCell
 
-matplotlib.use('TkAgg')
 logger = logging.getLogger("hw3.q3")
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
@@ -87,9 +88,14 @@ class SequencePredictor(Model):
 
         x = self.inputs_placeholder
         ### YOUR CODE HERE (~2-3 lines)
+        # defining initial state
+        zeros_dim = tf.stack([tf.shape(x)[0], cell.state_size])
+        initial_state = tf.fill(zeros_dim, 0.)
+        outputs, state = tf.compat.v1.nn.dynamic_rnn(cell, x, initial_state=initial_state, dtype=tf.float32)
+        preds = tf.math.sigmoid(state)
         ### END YOUR CODE
 
-        return preds #state # preds
+        return preds #state
 
     def add_loss_op(self, preds):
         """Adds ops to compute the loss function.
@@ -108,7 +114,8 @@ class SequencePredictor(Model):
         y = self.labels_placeholder
 
         ### YOUR CODE HERE (~1-2 lines)
-
+        # loss = tf.nn.l2_loss(preds - y)
+        loss = tf.losses.mean_squared_error(y, preds, reduction=tf.losses.Reduction.MEAN)
         ### END YOUR CODE
 
         return loss
@@ -146,7 +153,14 @@ class SequencePredictor(Model):
         # - Remember to clip gradients only if self.config.clip_gradients
         # is True.
         # - Remember to set self.grad_norm
-
+        grad = optimizer.compute_gradients(loss)
+        gradients, variables = zip(*grad)
+        if self.config.clip_gradients:
+            gradients, grad_norm = tf.clip_by_global_norm(gradients, self.config.max_grad_norm)
+            grad = zip(gradients, variables)
+            
+        self.grad_norm = tf.linalg.global_norm(gradients)
+        train_op = optimizer.apply_gradients(grad)
         ### END YOUR CODE
 
         assert self.grad_norm is not None, "grad_norm was not set properly!"

@@ -10,6 +10,7 @@ from __future__ import division
 import argparse
 import logging
 import sys
+import pdb
 
 import tensorflow as tf
 import numpy as np
@@ -65,7 +66,25 @@ class GRUCell(tf.nn.rnn_cell.RNNCell):
         # be defined elsewhere!
         with tf.variable_scope(scope):
             ### YOUR CODE HERE (~20-30 lines)
-            pass
+            xavier_initializer = tf.contrib.layers.xavier_initializer()
+            zeros_initializer = tf.constant_initializer(0.)
+
+            W_z = tf.get_variable("W_z", shape=(self.input_size, self._state_size), initializer=xavier_initializer)
+            U_z = tf.get_variable("U_z", shape=(self._state_size, self._state_size), initializer=xavier_initializer)
+            b_z = tf.get_variable("b_z", shape=(self._state_size, ), initializer=zeros_initializer)
+            W_r = tf.get_variable("W_r", shape=(self.input_size, self._state_size), initializer=xavier_initializer)
+            U_r = tf.get_variable("U_r", shape=(self._state_size, self._state_size), initializer=xavier_initializer)
+            b_r = tf.get_variable("b_r", shape=(self._state_size, ), initializer=zeros_initializer)
+            W_o = tf.get_variable("W_o", shape=(self.input_size, self._state_size), initializer=xavier_initializer)
+            U_o = tf.get_variable("U_o", shape=(self._state_size, self._state_size), initializer=xavier_initializer)
+            b_o = tf.get_variable("b_o", shape=(self._state_size, ), initializer=zeros_initializer)
+            h_tmin1 = state
+
+            z_t = tf.math.sigmoid(tf.matmul(inputs, W_z) + tf.matmul(h_tmin1, U_z) + b_z)
+            r_t = tf.math.sigmoid(tf.matmul(inputs, W_r) + tf.matmul(h_tmin1, U_r) + b_r)
+            o_t = tf.math.tanh(tf.matmul(inputs, W_o) + r_t * tf.matmul(h_tmin1, U_o) + b_o)
+            h_t = z_t * h_tmin1 + (1 - z_t) * o_t
+            new_state = h_t
             ### END YOUR CODE ###
         # For a GRU, the output and state are the same (N.B. this isn't true
         # for an LSTM, though we aren't using one of those in our
