@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+"""
+python run_bc.py experts/Hopper-v1.pkl Hopper-v1 --ckpt_dir dag_ckpt [--use_expert] [--render]
+"""
+
 import os
 import gym
 import time
@@ -17,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('expert_policy_file', type=str)
     parser.add_argument('envname', type=str)
+    parser.add_argument('--use_expert', action='store_true')
     parser.add_argument('--ckpt_dir', type=str, default='bc_ckpt')
     parser.add_argument('--pause', type=float, default=0.05)
     parser.add_argument('--render', action='store_true')
@@ -77,9 +82,11 @@ def main():
                         time.sleep(args.pause)
 
                     # Use expert policy or BC model to choose actions
-                    #action = policy_fn(obs[None,:])
-                    feed_dict = { obs_pl : obs[None,:], is_training : False }
-                    action = sess.run(pred, feed_dict=feed_dict)
+                    if args.use_expert:
+                        action = policy_fn(obs[None,:])
+                    else:
+                        feed_dict = { obs_pl : obs[None,:], is_training : False }
+                        action = sess.run(pred, feed_dict=feed_dict)
 
                     observations.append(obs)
                     actions.append(action)
@@ -102,8 +109,6 @@ def main():
                            'actions': np.array(actions)}
         
 
-# =============================== SECTION 2 ===============================
-
 def get_placeholders(batch_size, input_dims, output_dims):
     observations = tf.placeholder(tf.float32, shape=(batch_size, input_dims))
     actions = tf.placeholder(tf.float32, shape=(batch_size, output_dims))
@@ -117,13 +122,16 @@ def get_model(obs, output_dims, is_training):
         with slim.arg_scope([slim.fully_connected], 
                             normalizer_fn=slim.batch_norm,
                             normalizer_params={'is_training': is_training}):
-            net = slim.fully_connected(obs, 512, scope='fc1')
-            net = slim.fully_connected(net, 256, scope='fc2')
-            net = slim.fully_connected(net, 128, scope='fc3')
-            net = slim.fully_connected(net, 128, scope='fc4')
-            net = slim.dropout(net, keep_prob=0.7, scope='dp4', is_training=is_training)
-            net = slim.fully_connected(net, 128, scope='fc5')
-            net = slim.dropout(net, keep_prob=0.7, scope='dp5', is_training=is_training)
+            net = slim.fully_connected(obs, 128, scope='fc1')
+            net = slim.fully_connected(net, 64, scope='fc2')
+            net = slim.fully_connected(net, 64, scope='fc3')
+            # net = slim.fully_connected(obs, 512, scope='fc1')
+            # net = slim.fully_connected(net, 256, scope='fc2')
+            # net = slim.fully_connected(net, 128, scope='fc3')
+            # net = slim.fully_connected(net, 128, scope='fc4')
+            # net = slim.dropout(net, keep_prob=0.7, scope='dp4', is_training=is_training)
+            # net = slim.fully_connected(net, 128, scope='fc5')
+            # net = slim.dropout(net, keep_prob=0.7, scope='dp5', is_training=is_training)
         net = slim.fully_connected(net, output_dims, scope='fc6')
     return net
 
